@@ -1,0 +1,9 @@
+# Finales de línea LF en el repositorio y en el VPS (Linux),
+# sin importar la configuración de Git en Windows.
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary

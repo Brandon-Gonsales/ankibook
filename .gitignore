@@ -1,0 +1,23 @@
+# Cada subproyecto tiene su propio .gitignore (backend/ y frontend/).
+# Aquí solo va lo común a todo el repositorio.
+
+# Secretos: nunca subir variables de entorno ni credenciales
+.env
+.env.*
+!.env.example
+*serviceAccountKey*.json
+*service-account*.json
+*firebase-adminsdk*.json
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Herramientas locales
+.claude/
