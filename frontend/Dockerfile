@@ -26,6 +26,9 @@ RUN npm run build
 # Stage 2: Servidor web ligero Nginx
 FROM nginx:alpine
 
+# Quitar la página "Welcome to nginx" de la imagen base: la build SPA no trae
+# index.html (solo 200.html), así que el index.html por defecto ganaría en "/".
+RUN rm -rf /usr/share/nginx/html/*
 COPY --from=builder /app/build /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
