@@ -19,6 +19,10 @@ connect_args: dict[str, Any] = {}
 if "asyncpg" in settings.async_database_url:
     # Required for Supabase connection pooler (port 6543 / PgBouncer / Supavisor)
     connect_args["statement_cache_size"] = 0
+elif "psycopg" in settings.async_database_url:
+    # Same for psycopg: the transaction pooler (port 6543) can't keep
+    # prepared statements, so never prepare them.
+    connect_args["prepare_threshold"] = None
 
 engine: AsyncEngine = create_async_engine(
     settings.async_database_url,
