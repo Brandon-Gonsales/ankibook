@@ -79,3 +79,31 @@ export interface ReviewResult {
 	next_due: string;
 	message: string;
 }
+
+export interface BookProgress {
+	book_id: string;
+	total: number;
+	/** Never studied (or buried before the first review). */
+	new: number;
+	/** Learning or relearning. */
+	learning: number;
+	/** Graduated to review. */
+	learned: number;
+}
+
+export interface StudySummary {
+	/** Seen cards due right now. */
+	due_now: number;
+	/** New cards "Repasar" will still give today. */
+	new_today: number;
+	new_limit: number;
+	new_started_today: number;
+	/** Never-studied cards across the user's books. */
+	new_remaining: number;
+	reviews_today: number;
+	/** Next moment a seen card becomes due (only when nothing is due now). */
+	next_due: string | null;
+	/** Estimated cards for tomorrow (reviews + new). */
+	tomorrow: number;
+	books: BookProgress[];
+}

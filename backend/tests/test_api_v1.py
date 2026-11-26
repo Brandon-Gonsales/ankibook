@@ -17,6 +17,7 @@ from app.schemas import AnkibookRead
         "/api/v1/ankibooks/explore",
         "/api/v1/auth/me",
         "/api/v1/reviews/due",
+        "/api/v1/reviews/summary",
     ],
 )
 async def test_protected_routes_require_authentication(
@@ -95,6 +96,8 @@ def test_openapi_contains_crud_and_review_routes() -> None:
     }
     assert set(paths["/api/v1/lections/{lection_id}/cards"]) >= {"get", "post"}
     assert set(paths["/api/v1/reviews"]) >= {"post"}
+    assert set(paths["/api/v1/reviews/summary"]) >= {"get"}
+    assert set(paths["/api/v1/reviews/{card_id}/bury"]) >= {"post"}
     assert set(paths["/api/v1/auth/me"]) >= {"get"}
     assert set(paths["/api/v1/ankibooks/explore"]) >= {"get"}
     assert set(paths["/api/v1/ankibooks/{book_id}/library"]) >= {"put", "delete"}
@@ -195,7 +198,9 @@ class FakeReviewService:
     def __init__(self, repository) -> None:
         self.repository = repository
 
-    async def get_due_cards(self, user_id, *, due_at=None, limit=20, book_id=None, lection_id=None):
+    async def get_due_cards(
+        self, user_id, *, due_at=None, limit=20, book_id=None, lection_id=None, extra_new=0
+    ):
         assert user_id == "firebase-uid"
         assert limit == 10
         assert str(lection_id) == "3f1c2a8e-1b2c-4d5e-8f90-123456789abc"

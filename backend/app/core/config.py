@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # Database schema
     DB_SCHEMA: str = "public"
 
+    # Study day. "Repasar" mixes in at most SRS_NEW_CARDS_PER_DAY never-seen
+    # cards per user and day; the day starts at SRS_DAY_START_HOUR local time.
+    SRS_NEW_CARDS_PER_DAY: int = Field(default=20, ge=0, le=1000)
+    SRS_TIMEZONE: str = "America/La_Paz"
+    SRS_DAY_START_HOUR: int = Field(default=4, ge=0, le=23)
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def async_database_url(self) -> str:

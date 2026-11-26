@@ -24,3 +24,10 @@ export function formatInterval(days: number): string {
 	if (days < 365) return `${Math.round(days / 30)} m`;
 	return `${(days / 365).toFixed(1)} a`;
 }
+
+/** "en 3 h", "en 5 min"… for a future ISO date ("ahora" if already past). */
+export function formatUntil(iso: string, now = Date.now()): string {
+	const ms = new Date(iso).getTime() - now;
+	if (ms <= 0) return 'ahora';
+	return `en ${formatInterval(ms / 86_400_000)}`;
+}

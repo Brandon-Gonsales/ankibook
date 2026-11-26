@@ -4,11 +4,13 @@
 	import { api } from '#lib/api.ts';
 	import Icon from '#lib/components/Icon.svelte';
 	import { prefs } from '#lib/prefs.svelte.ts';
-	import { formatInterval, previewInterval } from '#lib/srs.ts';
-	import { notifyError } from '#lib/toast.svelte.ts';
-	import type { Direction, DueCard, Rating } from '#lib/types.ts';
+	import { formatInterval, formatUntil, previewInterval } from '#lib/srs.ts';
+	import { notify, notifyError } from '#lib/toast.svelte.ts';
+	import type { Direction, DueCard, Rating, StudySummary } from '#lib/types.ts';
 
 	const BATCH = 50;
+	/** New cards added beyond today's limit by "Aprender más". */
+	const EXTRA_NEW = 20;
 	/** Cards rated into a step shorter than this come back in the same session. */
 	const REQUEUE_MS = 20 * 60 * 1000;
 
@@ -25,12 +27,21 @@
 	let sending = $state(false);
 	let reviewed = $state(0);
 	let direction = $state<Direction>('base_to_target');
+	let summary = $state<StudySummary | null>(null);
+
+	// Session stats for the summary screen.
+	let correct = $state(0);
+	let newLearned = $state(0);
+	const newSeen = new Set<string>();
+	let minutes = $state(0);
+	const startedAt = Date.now();
 
 	const current = $derived(queue[0]);
 
 	/*
-	 * /review                → general: only due cards already seen.
-	 * /review?book=<id>      → one book: its due cards + its new cards.
+	 * /review                → general: due cards + new cards up to today's limit.
+	 * /review?more=1         → general, allowing EXTRA_NEW new cards beyond the limit.
+	 * /review?book=<id>      → one book: its due cards + all its new cards.
 	 * /review?lection=<id>   → one lesson: same, for that lesson.
 	 */
 	const scope = {
@@ -45,20 +56,26 @@
 		return prefs.mode;
 	}
 
-	async function fetchMore() {
+	async function fetchMore(extraNew = 0) {
 		phase = 'loading';
 		try {
-			queue = await api.due(BATCH, scope);
+			queue = await api.due(BATCH, scope, scoped ? 0 : extraNew);
 		} catch (err) {
 			notifyError(err);
 			queue = [];
 		}
 		revealed = false;
 		direction = pickDirection();
-		phase = queue.length ? 'study' : 'done';
+		if (queue.length) {
+			phase = 'study';
+			return;
+		}
+		minutes = Math.max(1, Math.round((Date.now() - startedAt) / 60_000));
+		summary = await api.summary().catch(() => null);
+		phase = 'done';
 	}
 
-	fetchMore();
+	fetchMore(page.url.searchParams.get('more') === '1' ? EXTRA_NEW : 0);
 
 	/**
 	 * Reviews are sent in the background, one after another, so the next card
@@ -77,11 +94,16 @@
 				// Not saved: undo the step and show the card again.
 				notifyError(err);
 				reviewed--;
-				queue = [item, ...queue.filter((q) => q.card.id !== item.card.id)];
-				if (phase === 'done') phase = 'study';
+				if (rating > 1) correct--;
+				restore(item);
 			}
 		});
 		return outbox;
+	}
+
+	function restore(item: DueCard) {
+		queue = [item, ...queue.filter((q) => q.card.id !== item.card.id)];
+		if (phase === 'done') phase = 'study';
 	}
 
 	async function rate(rating: Rating) {
@@ -89,9 +111,35 @@
 		const item = $state.snapshot(current) as DueCard;
 		const rest = queue.slice(1);
 		if (previewInterval(item.progress, rating) * 86_400_000 < REQUEUE_MS) rest.push(item);
+		if ((!item.progress || item.progress.state === 'new') && !newSeen.has(item.card.id)) {
+			newSeen.add(item.card.id);
+			newLearned++;
+		}
 		submit(item, rating, direction);
 		reviewed++;
+		if (rating > 1) correct++;
 		queue = rest;
+		await advance();
+	}
+
+	/** Leave the current card for tomorrow, without grading it. */
+	async function bury() {
+		if (!current || sending) return;
+		const item = $state.snapshot(current) as DueCard;
+		outbox = outbox.then(async () => {
+			try {
+				await api.bury(item.card.id);
+			} catch (err) {
+				notifyError(err);
+				restore(item);
+			}
+		});
+		notify('Tarjeta movida a mañana');
+		queue = queue.filter((q) => q.card.id !== item.card.id);
+		await advance();
+	}
+
+	async function advance() {
 		revealed = false;
 		direction = pickDirection();
 		if (!queue.length) {
@@ -140,28 +188,53 @@
 		{#if phase === 'study'}
 			<span class="counter" aria-label="Restantes">{queue.length}{queue.length >= BATCH ? '+' : ''}</span>
 		{/if}
-		<span class="icon-btn" aria-hidden="true"></span>
+		{#if phase === 'study' && current}
+			<button class="icon-btn" onclick={bury} disabled={sending} aria-label="Dejar para mañana" title="Dejar para mañana">
+				<Icon name="later" />
+			</button>
+		{:else}
+			<span class="icon-btn" aria-hidden="true"></span>
+		{/if}
 	</header>
 
 	{#if phase === 'loading'}
 		<div class="center"><div class="spinner"></div></div>
 	{:else if phase === 'done'}
+		{@const canLearnMore = !scoped && (summary?.new_remaining ?? 0) > 0}
 		<div class="center done">
 			<div class="check"><Icon name="check" size={32} stroke={2.5} /></div>
-			<h1>{reviewed ? '¡Sesión completa!' : 'Todo al día'}</h1>
-			<p class="muted">
-				{reviewed
-					? `Repasaste ${reviewed} ${reviewed === 1 ? 'tarjeta' : 'tarjetas'}.`
-					: scoped
-						? 'No quedan tarjetas por estudiar aquí ahora.'
-						: 'No tienes repasos pendientes ahora.'}
-			</p>
-			{#if !scoped}
-				<p class="muted hint">Las tarjetas nuevas se estudian desde cada libro o lección.</p>
+			<h1>{reviewed ? '¡Sesión completa!' : scoped ? 'Nada por estudiar aquí' : 'Nada pendiente ahora'}</h1>
+
+			{#if reviewed}
+				<dl class="stats">
+					<div><dt>Tarjetas</dt><dd>{reviewed}</dd></div>
+					<div><dt>Aciertos</dt><dd>{Math.round((correct / reviewed) * 100)}%</dd></div>
+					<div><dt>Minutos</dt><dd>{minutes}</dd></div>
+					<div><dt>Nuevas</dt><dd>{newLearned}</dd></div>
+				</dl>
+			{:else if scoped}
+				<p class="muted">No quedan tarjetas por estudiar aquí ahora.</p>
 			{/if}
+
+			{#if summary && !scoped}
+				<p class="muted hint">
+					{#if summary.next_due}
+						Próximo repaso {formatUntil(summary.next_due)}.
+					{:else if summary.tomorrow > 0}
+						Mañana tienes ~{summary.tomorrow} {summary.tomorrow === 1 ? 'tarjeta' : 'tarjetas'}.
+					{/if}
+					{#if canLearnMore}
+						Te quedan {summary.new_remaining} {summary.new_remaining === 1 ? 'tarjeta nueva' : 'tarjetas nuevas'} por empezar.
+					{/if}
+				</p>
+			{/if}
+
 			<div class="done-actions">
-				<a class="btn primary block" href={exitHref}>{scoped ? 'Volver' : 'Volver a mis libros'}</a>
-				<button class="btn ghost block" onclick={fetchMore}>Buscar más</button>
+				{#if canLearnMore}
+					<button class="btn primary block" onclick={() => fetchMore(EXTRA_NEW)}>Aprender {EXTRA_NEW} más</button>
+				{/if}
+				<a class="btn block" class:primary={!canLearnMore} href={exitHref}>{scoped ? 'Volver' : 'Volver a mis libros'}</a>
+				<button class="btn ghost block" onclick={() => fetchMore()}>Buscar más</button>
 			</div>
 		</div>
 	{:else if current}
@@ -273,6 +346,35 @@
 
 	.done h1 {
 		font-size: 1.5rem;
+	}
+
+	.stats {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 8px;
+		width: 100%;
+		max-width: 360px;
+		margin-top: 8px;
+	}
+
+	.stats div {
+		display: grid;
+		gap: 2px;
+		padding: 12px 4px;
+		border-radius: var(--radius);
+		background: var(--surface);
+		border: 1px solid var(--line);
+	}
+
+	.stats dt {
+		font-size: 0.72rem;
+		color: var(--muted);
+	}
+
+	.stats dd {
+		font-size: 1.3rem;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.done-actions {

@@ -9,7 +9,8 @@ import type {
 	Lection,
 	LectionDetail,
 	Rating,
-	ReviewResult
+	ReviewResult,
+	StudySummary
 } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
@@ -81,13 +82,20 @@ export const api = {
 	updateCard: (id: string, data: Partial<CardFields>) => request<Card>('PATCH', `/cards/${id}`, data),
 	deleteCard: (id: string) => request<void>('DELETE', `/cards/${id}`),
 
-	/** Without a scope: due cards only. With a book or lesson: due + its new cards. */
-	due: (limit = 50, scope: { book?: string; lection?: string } = {}) => {
+	/**
+	 * Without a scope: due cards + new cards up to today's limit (`extraNew`
+	 * allows that many more). With a book or lesson: due + all its new cards.
+	 */
+	due: (limit = 50, scope: { book?: string; lection?: string } = {}, extraNew = 0) => {
 		const params = new URLSearchParams({ limit: String(limit) });
 		if (scope.book) params.set('book_id', scope.book);
 		if (scope.lection) params.set('lection_id', scope.lection);
+		if (extraNew > 0) params.set('extra_new', String(extraNew));
 		return request<DueCard[]>('GET', `/reviews/due?${params}`);
 	},
+	summary: () => request<StudySummary>('GET', '/reviews/summary'),
 	review: (ankicard_id: string, rating: Rating, direction: Direction) =>
-		request<ReviewResult>('POST', '/reviews', { ankicard_id, rating, direction })
+		request<ReviewResult>('POST', '/reviews', { ankicard_id, rating, direction }),
+	/** Leave a card for tomorrow without grading it. */
+	bury: (cardId: string) => request<void>('POST', `/reviews/${cardId}/bury`)
 };

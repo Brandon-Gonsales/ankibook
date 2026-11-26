@@ -6,24 +6,28 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Sheet from '#lib/components/Sheet.svelte';
 	import { langName } from '#lib/langs.ts';
+	import { formatUntil } from '#lib/srs.ts';
 	import { notifyError } from '#lib/toast.svelte.ts';
-	import type { Book } from '#lib/types.ts';
-
-	const DUE_LIMIT = 100;
+	import type { Book, BookProgress, StudySummary } from '#lib/types.ts';
 
 	let books = $state<Book[] | null>(null);
-	let due = $state<number | null>(null);
+	let summary = $state<StudySummary | null>(null);
 	let creating = $state(false);
 
 	async function load() {
 		try {
-			const [list, dueCards] = await Promise.all([api.books(), api.due(DUE_LIMIT)]);
-			books = list;
-			due = dueCards.length;
+			[books, summary] = await Promise.all([api.books(), api.summary()]);
 		} catch (err) {
 			books ??= [];
 			notifyError(err);
 		}
+	}
+
+	const today = $derived(summary ? summary.due_now + summary.new_today : null);
+	const progressByBook = $derived(new Map<string, BookProgress>(summary?.books.map((b) => [b.book_id, b]) ?? []));
+
+	function plural(n: number, one: string, many: string): string {
+		return `${n} ${n === 1 ? one : many}`;
 	}
 
 	load();
@@ -35,7 +39,6 @@
 	}
 
 	const firstName = $derived(session.name?.split(' ')[0]);
-	const dueLabel = $derived(due === null ? '…' : due >= DUE_LIMIT ? `${DUE_LIMIT}+` : String(due));
 </script>
 
 <main class="page">
@@ -43,13 +46,51 @@
 		<h1>{firstName ? `Hola, ${firstName}` : 'AnkiBook'}</h1>
 	</header>
 
-	<a class="study" href="/review" class:idle={due === 0}>
-		<div>
-			<p class="study-count">{dueLabel}</p>
-			<p class="study-label">{due === 0 ? 'Todo al día' : 'tarjetas para repasar'}</p>
+	{#if summary === null || today === null}
+		<div class="study">
+			<div>
+				<p class="study-count">…</p>
+				<p class="study-label">Preparando tu día</p>
+			</div>
 		</div>
-		<span class="study-go">{due === 0 ? 'Ver' : 'Repasar'}<Icon name="chevron" size={18} /></span>
-	</a>
+	{:else if today > 0}
+		<a class="study" href="/review">
+			<div>
+				<p class="study-count">{today}</p>
+				<p class="study-label">
+					para hoy · {plural(summary.due_now, 'repaso', 'repasos')} · {plural(summary.new_today, 'nueva', 'nuevas')}
+				</p>
+			</div>
+			<span class="study-go">Repasar<Icon name="chevron" size={18} /></span>
+		</a>
+	{:else}
+		<div class="study idle">
+			<div class="idle-main">
+				{#if summary.books.length === 0}
+					<p class="idle-title">Nada que estudiar aún</p>
+					<p class="study-label">Crea un libro o agrega uno desde Explorar.</p>
+				{:else}
+					<p class="idle-title">
+						<span class="done-dot"><Icon name="check" size={16} stroke={3} /></span>
+						{summary.reviews_today > 0 ? 'Hoy completado' : 'Nada pendiente ahora'}
+					</p>
+					<p class="study-label">
+						{#if summary.next_due}
+							Próximo repaso {formatUntil(summary.next_due)}
+						{:else if summary.tomorrow > 0}
+							Mañana: ~{plural(summary.tomorrow, 'tarjeta', 'tarjetas')}
+						{:else}
+							No hay repasos programados.
+						{/if}
+						{#if summary.reviews_today > 0}· {plural(summary.reviews_today, 'repaso', 'repasos')} hoy{/if}
+					</p>
+				{/if}
+			</div>
+			{#if summary.new_remaining > 0}
+				<a class="btn primary more" href="/review?more=1">Aprender más</a>
+			{/if}
+		</div>
+	{/if}
 
 	<h2 class="section-title">Mis libros</h2>
 
@@ -75,6 +116,20 @@
 								{book.lections_count === 1 ? 'lección' : 'lecciones'} · {book.cards_count}
 								{book.cards_count === 1 ? 'tarjeta' : 'tarjetas'}
 							</span>
+							{#if progressByBook.get(book.id)?.total}
+								{@const p = progressByBook.get(book.id)!}
+								<span
+									class="progress"
+									role="img"
+									aria-label={`${p.learned} aprendidas, ${p.learning} aprendiendo, ${p.new} nuevas`}
+								>
+									<span class="bar learned" style:width={`${(p.learned / p.total) * 100}%`}></span>
+									<span class="bar learning" style:width={`${(p.learning / p.total) * 100}%`}></span>
+								</span>
+								<span class="progress-label">
+									{p.learned} de {p.total} aprendidas{#if p.learning} · {p.learning} aprendiendo{/if}
+								</span>
+							{/if}
 						</span>
 						<span class="chev"><Icon name="chevron" size={18} /></span>
 					</a>
@@ -128,6 +183,57 @@
 		align-items: center;
 		gap: 2px;
 		font-weight: 700;
+	}
+
+	.idle-main {
+		min-width: 0;
+	}
+
+	.idle-title {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 1.2rem;
+		font-weight: 800;
+	}
+
+	.done-dot {
+		display: grid;
+		place-items: center;
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		background: var(--accent-soft);
+		color: var(--accent);
+		flex-shrink: 0;
+	}
+
+	.more {
+		flex-shrink: 0;
+		white-space: nowrap;
+	}
+
+	.progress {
+		display: flex;
+		height: 6px;
+		margin-top: 8px;
+		border-radius: 999px;
+		overflow: hidden;
+		background: var(--line);
+	}
+
+	.bar.learned {
+		background: var(--accent);
+	}
+
+	.bar.learning {
+		background: color-mix(in srgb, var(--accent) 40%, transparent);
+	}
+
+	.progress-label {
+		margin-top: 4px;
+		font-size: 0.78rem;
+		color: var(--muted);
 	}
 
 	.badge {
