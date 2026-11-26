@@ -5,6 +5,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import { prefs } from '#lib/prefs.svelte.ts';
 	import { formatInterval, formatUntil, previewInterval } from '#lib/srs.ts';
+	import { speak, stopSpeaking } from '#lib/speech.ts';
 	import { notify, notifyError } from '#lib/toast.svelte.ts';
 	import type { Direction, DueCard, Rating, StudySummary } from '#lib/types.ts';
 
@@ -31,8 +32,6 @@
 
 	// Session stats for the summary screen.
 	let correct = $state(0);
-	let newLearned = $state(0);
-	const newSeen = new Set<string>();
 	let minutes = $state(0);
 	const startedAt = Date.now();
 
@@ -111,10 +110,6 @@
 		const item = $state.snapshot(current) as DueCard;
 		const rest = queue.slice(1);
 		if (previewInterval(item.progress, rating) * 86_400_000 < REQUEUE_MS) rest.push(item);
-		if ((!item.progress || item.progress.state === 'new') && !newSeen.has(item.card.id)) {
-			newSeen.add(item.card.id);
-			newLearned++;
-		}
 		submit(item, rating, direction);
 		reviewed++;
 		if (rating > 1) correct++;
@@ -139,7 +134,18 @@
 		await advance();
 	}
 
+	/** Show the answer and, if enabled, pronounce the word being learned. */
+	function reveal() {
+		if (!current || revealed) return;
+		revealed = true;
+		if (prefs.autoSpeak) speak(current.card.target_1, current.target_lang);
+	}
+
+	// Stop any pronunciation when leaving the study screen.
+	$effect(() => stopSpeaking);
+
 	async function advance() {
+		stopSpeaking();
 		revealed = false;
 		direction = pickDirection();
 		if (!queue.length) {
@@ -157,7 +163,7 @@
 		if (phase !== 'study' || event.target instanceof HTMLInputElement) return;
 		if (!revealed && (event.key === ' ' || event.key === 'Enter')) {
 			event.preventDefault();
-			revealed = true;
+			reveal();
 		} else if (revealed && ['1', '2', '3', '4'].includes(event.key)) {
 			rate(Number(event.key) as Rating);
 		}
@@ -210,7 +216,6 @@
 					<div><dt>Tarjetas</dt><dd>{reviewed}</dd></div>
 					<div><dt>Aciertos</dt><dd>{Math.round((correct / reviewed) * 100)}%</dd></div>
 					<div><dt>Minutos</dt><dd>{minutes}</dd></div>
-					<div><dt>Nuevas</dt><dd>{newLearned}</dd></div>
 				</dl>
 			{:else if scoped}
 				<p class="muted">No quedan tarjetas por estudiar aquí ahora.</p>
@@ -240,14 +245,11 @@
 	{:else if current}
 		<button
 			class="card"
-			onclick={() => (revealed = true)}
+			onclick={reveal}
 			disabled={revealed}
 			aria-label={revealed ? undefined : 'Mostrar respuesta'}
 		>
-			<span class="context">
-				{current.book_title} · {current.lection_name}
-				{#if isNew}<span class="tag">Nueva</span>{/if}
-			</span>
+			{#if isNew}<span class="tag">Nueva</span>{/if}
 			<span class="front">{front}</span>
 
 			{#if revealed}
@@ -281,7 +283,7 @@
 					{/each}
 				</div>
 			{:else}
-				<button class="btn primary block reveal" onclick={() => (revealed = true)}>Mostrar respuesta</button>
+				<button class="btn primary block reveal" onclick={reveal}>Mostrar respuesta</button>
 			{/if}
 		</footer>
 	{/if}
@@ -350,10 +352,10 @@
 
 	.stats {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(3, 1fr);
 		gap: 8px;
 		width: 100%;
-		max-width: 360px;
+		max-width: 300px;
 		margin-top: 8px;
 	}
 
@@ -401,14 +403,6 @@
 	.card:disabled {
 		cursor: default;
 		color: inherit;
-	}
-
-	.context {
-		font-size: 0.8rem;
-		color: var(--muted);
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
 	}
 
 	.tag {

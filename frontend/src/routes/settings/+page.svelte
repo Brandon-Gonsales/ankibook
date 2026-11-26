@@ -2,7 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { session, signOut } from '#lib/auth.svelte.ts';
 	import { DEV_UID } from '#lib/firebase.ts';
-	import { prefs, setMode, setTheme, type StudyMode, type Theme } from '#lib/prefs.svelte.ts';
+	import { prefs, setAutoSpeak, setMode, setTheme, type StudyMode, type Theme } from '#lib/prefs.svelte.ts';
+	import { speechSupported } from '#lib/speech.ts';
 	import { notifyError } from '#lib/toast.svelte.ts';
 
 	const themes: { value: Theme; label: string }[] = [
@@ -58,6 +59,15 @@
 		{/each}
 	</div>
 	<p class="hint muted">{modeHint}</p>
+
+	{#if speechSupported}
+		<h2 class="section-title">Pronunciación</h2>
+		<div class="segmented" role="group" aria-label="Pronunciación">
+			<button aria-pressed={prefs.autoSpeak} onclick={() => setAutoSpeak(true)}>Automática</button>
+			<button aria-pressed={!prefs.autoSpeak} onclick={() => setAutoSpeak(false)}>Desactivada</button>
+		</div>
+		<p class="hint muted">Se escucha la palabra al mostrar la respuesta, con la voz de tu dispositivo.</p>
+	{/if}
 
 	<h2 class="section-title">Cuenta</h2>
 	{#if DEV_UID}

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -137,7 +137,11 @@ async def test_summary_combines_limit_progress_and_forecast() -> None:
         books=[BookProgressRead(book_id=book_id, total=883, new=600, learning=40, learned=243)],
     )
     repository = FakeReviewRepository(
-        uuid.uuid4(), started_today=5, counts=counts, reviews_today=70
+        uuid.uuid4(),
+        started_today=5,
+        counts=counts,
+        reviews_today=70,
+        study_dates={date(2026, 10, 17), date(2026, 10, 18), date(2026, 10, 19)},
     )
     service = ReviewService(repository)  # type: ignore[arg-type]
 
@@ -148,6 +152,7 @@ async def test_summary_combines_limit_progress_and_forecast() -> None:
     assert summary.new_started_today == 5
     assert summary.new_remaining == 600
     assert summary.reviews_today == 70
+    assert summary.streak == 3
     assert summary.due_now == 0
     assert summary.next_due == next_due
     assert summary.tomorrow == 30 + 20
@@ -212,7 +217,9 @@ class FakeReviewRepository:
         started_today: int = 0,
         reviews_today: int = 0,
         counts: StudyCounts | None = None,
+        study_dates: set[date] | None = None,
     ) -> None:
+        self.study_dates = study_dates or set()
         self.started_today = started_today
         self.reviews_today = reviews_today
         self.counts = counts or StudyCounts()
@@ -258,6 +265,9 @@ class FakeReviewRepository:
 
     async def count_reviews_since(self, user_id: str, since: datetime) -> int:
         return self.reviews_today
+
+    async def study_dates_since(self, user_id: str, since: datetime, **kwargs) -> set[date]:
+        return self.study_dates
 
     async def study_counts(
         self, user_id: str, *, now: datetime, horizon: datetime

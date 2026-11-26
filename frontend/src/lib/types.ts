@@ -72,6 +72,8 @@ export interface DueCard {
 	lection_name: string;
 	book_id: string;
 	book_title: string;
+	/** Language being learned (book target), used for pronunciation. */
+	target_lang: string;
 }
 
 export interface ReviewResult {
@@ -101,6 +103,8 @@ export interface StudySummary {
 	/** Never-studied cards across the user's books. */
 	new_remaining: number;
 	reviews_today: number;
+	/** Consecutive study days, up to today (or yesterday while today is pending). */
+	streak: number;
 	/** Next moment a seen card becomes due (only when nothing is due now). */
 	next_due: string | null;
 	/** Estimated cards for tomorrow (reviews + new). */

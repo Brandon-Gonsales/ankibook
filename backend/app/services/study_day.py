@@ -5,7 +5,7 @@ The day does not roll over at midnight but at ``SRS_DAY_START_HOUR`` in
 previous day.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.core.config import settings
@@ -27,6 +27,27 @@ def study_day_start(
     if local < start:
         start -= timedelta(days=1)
     return start.astimezone(timezone.utc)
+
+
+def study_date(
+    now: datetime,
+    *,
+    tz_name: str | None = None,
+    start_hour: int | None = None,
+) -> date:
+    """The calendar date that names the study day containing ``now``."""
+    tz = ZoneInfo(tz_name or settings.SRS_TIMEZONE)
+    return study_day_start(now, tz_name=tz_name, start_hour=start_hour).astimezone(tz).date()
+
+
+def streak_length(study_dates: set[date], today: date) -> int:
+    """Consecutive study days ending today, or yesterday while today is pending."""
+    day = today if today in study_dates else today - timedelta(days=1)
+    streak = 0
+    while day in study_dates:
+        streak += 1
+        day -= timedelta(days=1)
+    return streak
 
 
 def next_study_day_start(

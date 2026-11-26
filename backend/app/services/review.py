@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
 from app.models.review_log import ReviewLog
@@ -13,9 +13,16 @@ from app.schemas.review_log import (
 )
 from app.schemas.user_card_progress import UserCardProgressRead
 from app.services.srs import schedule_review
-from app.services.study_day import next_study_day_start, study_day_start
+from app.services.study_day import (
+    next_study_day_start,
+    streak_length,
+    study_date,
+    study_day_start,
+)
 
 MAX_EXTRA_NEW = 100
+# How far back to look when counting the streak.
+STREAK_LOOKBACK_DAYS = 400
 
 
 class ReviewCardNotFoundError(LookupError):
@@ -79,6 +86,12 @@ class ReviewService:
         counts = await self.repository.study_counts(user_id, now=now, horizon=horizon)
         started = await self.repository.count_new_started_since(user_id, day_start)
         reviews = await self.repository.count_reviews_since(user_id, day_start)
+        dates = await self.repository.study_dates_since(
+            user_id,
+            day_start - timedelta(days=STREAK_LOOKBACK_DAYS),
+            tz_name=settings.SRS_TIMEZONE,
+            day_start_hour=settings.SRS_DAY_START_HOUR,
+        )
 
         limit = settings.SRS_NEW_CARDS_PER_DAY
         new_today = min(max(0, limit - started), counts.new_available)
@@ -90,6 +103,7 @@ class ReviewService:
             new_started_today=started,
             new_remaining=counts.new_remaining,
             reviews_today=reviews,
+            streak=streak_length(dates, study_date(now)),
             next_due=counts.next_due if counts.due_now == 0 else None,
             tomorrow=counts.due_before_horizon + tomorrow_new,
             books=counts.books,

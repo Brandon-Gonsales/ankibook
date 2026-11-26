@@ -1,8 +1,8 @@
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import and_, case, distinct, exists, func, or_
+from sqlalchemy import Date, and_, case, cast, distinct, exists, func, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
 from sqlmodel import select
@@ -160,8 +160,9 @@ class ReviewRepository:
                 lection_name=lection_name,
                 book_id=book_id,
                 book_title=book_title,
+                target_lang=target_lang,
             )
-            for card, progress, lection_id, lection_name, book_id, book_title in rows
+            for card, progress, lection_id, lection_name, book_id, book_title, target_lang in rows
         ]
 
     async def count_new_started_since(self, user_id: str, since: datetime) -> int:
@@ -184,6 +185,26 @@ class ReviewRepository:
             ReviewLog.reviewed_at >= since,
         )
         return int((await self.session.exec(statement)).one() or 0)
+
+    async def study_dates_since(
+        self,
+        user_id: str,
+        since: datetime,
+        *,
+        tz_name: str,
+        day_start_hour: int,
+    ) -> set[date]:
+        """Local study days (rolling over at ``day_start_hour``) with a review."""
+        local_day = cast(
+            func.timezone(tz_name, ReviewLog.reviewed_at) - timedelta(hours=day_start_hour),
+            Date,
+        )
+        statement = (
+            select(local_day)
+            .where(ReviewLog.user_id == user_id, ReviewLog.reviewed_at >= since)
+            .distinct()
+        )
+        return set((await self.session.exec(statement)).all())
 
     async def study_counts(
         self,
@@ -283,6 +304,7 @@ class ReviewRepository:
                 Ankilection.name.label("lection_name"),
                 Ankibook.id.label("book_id"),
                 Ankibook.title.label("book_title"),
+                Ankibook.target_lang.label("target_lang"),
             )
             .join(Ankilection, AnkiCard.ankilection_id == Ankilection.id)
             .join(Ankibook, Ankilection.ankibook_id == Ankibook.id)

@@ -3,6 +3,7 @@ export type StudyMode = 'base_to_target' | 'target_to_base' | 'mixed';
 
 const THEME_KEY = 'ankibook-theme';
 const MODE_KEY = 'ankibook-mode';
+const SPEAK_KEY = 'ankibook-autospeak';
 
 function read(key: string): string | null {
 	try {
@@ -24,10 +25,17 @@ function write(key: string, value: string | null): void {
 const savedTheme = read(THEME_KEY);
 const savedMode = read(MODE_KEY);
 
-export const prefs: { theme: Theme; mode: StudyMode } = $state({
+export const prefs: { theme: Theme; mode: StudyMode; autoSpeak: boolean } = $state({
 	theme: savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'system',
-	mode: savedMode === 'target_to_base' || savedMode === 'mixed' ? savedMode : 'base_to_target'
+	mode: savedMode === 'target_to_base' || savedMode === 'mixed' ? savedMode : 'base_to_target',
+	// On by default: pronounce the word when the answer is shown.
+	autoSpeak: read(SPEAK_KEY) !== 'off'
 });
+
+export function setAutoSpeak(on: boolean): void {
+	prefs.autoSpeak = on;
+	write(SPEAK_KEY, on ? null : 'off');
+}
 
 export function setTheme(theme: Theme): void {
 	prefs.theme = theme;

@@ -50,6 +50,7 @@ class DueCardRead(BaseModel):
     lection_name: str
     book_id: uuid.UUID
     book_title: str
+    target_lang: str = Field(description="Language being learned, for pronunciation")
 
     model_config = ConfigDict(extra="forbid")
 
@@ -76,6 +77,11 @@ class StudySummaryRead(BaseModel):
     new_started_today: int = Field(ge=0, description="Cards seen for the first time today")
     new_remaining: int = Field(ge=0, description="Never-studied cards across the user's books")
     reviews_today: int = Field(ge=0, description="Ratings given today")
+    streak: int = Field(
+        ge=0,
+        description="Consecutive study days with at least one review, up to today "
+        "(or yesterday, while today is still pending)",
+    )
     next_due: datetime | None = Field(
         default=None,
         description="Next moment a seen card becomes due, if none is due now",

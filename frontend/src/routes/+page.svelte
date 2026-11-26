@@ -44,6 +44,16 @@
 <main class="page">
 	<header class="topbar">
 		<h1>{firstName ? `Hola, ${firstName}` : 'AnkiBook'}</h1>
+		{#if summary?.streak}
+			<span
+				class="streak"
+				class:pending={summary.reviews_today === 0}
+				title={summary.reviews_today === 0
+					? `Racha de ${summary.streak} ${summary.streak === 1 ? 'día' : 'días'}: estudia hoy para mantenerla`
+					: `Racha de ${summary.streak} ${summary.streak === 1 ? 'día' : 'días'}`}
+				aria-label={`Racha de ${summary.streak} ${summary.streak === 1 ? 'día' : 'días'}`}
+			>🔥 {summary.streak}</span>
+		{/if}
 	</header>
 
 	{#if summary === null || today === null}
@@ -118,16 +128,10 @@
 							</span>
 							{#if progressByBook.get(book.id)?.total}
 								{@const p = progressByBook.get(book.id)!}
-								<span
-									class="progress"
-									role="img"
-									aria-label={`${p.learned} aprendidas, ${p.learning} aprendiendo, ${p.new} nuevas`}
-								>
+								{@const label = `${p.learned} de ${p.total} aprendidas · ${p.learning} aprendiendo`}
+								<span class="progress" role="img" aria-label={label} title={label}>
 									<span class="bar learned" style:width={`${(p.learned / p.total) * 100}%`}></span>
 									<span class="bar learning" style:width={`${(p.learning / p.total) * 100}%`}></span>
-								</span>
-								<span class="progress-label">
-									{p.learned} de {p.total} aprendidas{#if p.learning} · {p.learning} aprendiendo{/if}
 								</span>
 							{/if}
 						</span>
@@ -230,10 +234,14 @@
 		background: color-mix(in srgb, var(--accent) 40%, transparent);
 	}
 
-	.progress-label {
-		margin-top: 4px;
-		font-size: 0.78rem;
-		color: var(--muted);
+	.streak {
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.streak.pending {
+		opacity: 0.45;
 	}
 
 	.badge {
